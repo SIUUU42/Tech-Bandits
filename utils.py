@@ -61,8 +61,12 @@ def format_flight_display(flight: dict) -> str:
     weather_label = risk_label(weather_score)
     delay_label = risk_label(flight.get("delay_probability", 0))
     price = flight.get("price", 0)
+    mobility_friendly = flight.get("mobility_friendly", "YES")
     
     seats_category = "Plenty" if seats_available > 30 else "Limited" if seats_available > 10 else "Scarce"
+    mobility_badge = "♿ Accessible" if mobility_friendly == "YES" else ""
+    
+    accessibility_line = f"- {mobility_badge}" if mobility_badge else ""
     
     return f"""
 **✈️  {flight_id}** ({airline}) — {source} → {destination} — {departure_time}
@@ -70,6 +74,7 @@ def format_flight_display(flight: dict) -> str:
 - **Weather Risk:** {weather_label}
 - **Delay Risk:** {delay_label}
 - **Price:** ₹{price}
+{accessibility_line}
 """
 
 

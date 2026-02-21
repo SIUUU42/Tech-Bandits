@@ -160,6 +160,10 @@ class FlightDisruptionAgent:
         elif "today" in user_lower:
             params["date"] = datetime.now().strftime("%Y-%m-%d")
         
+        # Extract mobility preference
+        if any(kw in user_lower for kw in ["mobility", "wheelchair", "mobility friendly", "accessible", "disability"]):
+            params["mobility_friendly"] = True
+        
         return params
     
     def db_query_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -217,7 +221,13 @@ class FlightDisruptionAgent:
             params = dict(search_params)
             time_label = params.pop("time_label", None)
             date_value = params.get("date")
+            mobility_friendly = params.pop("mobility_friendly", None)
             fallback_note = ""
+            mobility_note = ""
+            
+            # Add mobility note if filter is applied
+            if mobility_friendly:
+                mobility_note = "♿ **Showing mobility-friendly flights only.**\n"
 
             # Define time window fallback chain
             time_fallbacks = {
@@ -288,6 +298,7 @@ class FlightDisruptionAgent:
 
             state["query_results"] = results
             state["fallback_note"] = fallback_note
+            state["mobility_note"] = mobility_note
         
         return state
     
@@ -355,6 +366,10 @@ class FlightDisruptionAgent:
         else:
             response_lines.append("**Best available flights are listed below.**\n")
 
+        mobility_note = state.get("mobility_note", "")
+        if mobility_note:
+            response_lines.append(f"{mobility_note}")
+        
         fallback_note = state.get("fallback_note")
         if fallback_note:
             response_lines.append(f"{fallback_note}\n")

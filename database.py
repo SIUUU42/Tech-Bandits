@@ -49,7 +49,8 @@ def init_db():
         wind_risk REAL NOT NULL,
         airport_congestion REAL NOT NULL,
         previous_flight_delay REAL NOT NULL,
-        delay_probability REAL NOT NULL
+        delay_probability REAL NOT NULL,
+        mobility_friendly TEXT NOT NULL DEFAULT 'YES'
     )
     """)
     
@@ -119,6 +120,7 @@ def generate_flights(count: int = 300) -> List[Dict]:
         "airport_congestion": 0.6,
         "previous_flight_delay": 0.2,
         "delay_probability": 0.7,
+        "mobility_friendly": "YES",
     }
     flights.append(fixed_flight)
     
@@ -170,6 +172,7 @@ def generate_flights(count: int = 300) -> List[Dict]:
                         "airport_congestion": round(random.uniform(0, 0.8), 2),
                         "previous_flight_delay": round(random.uniform(0, 0.3), 2),
                         "delay_probability": round(random.uniform(0, 0.7), 2),
+                        "mobility_friendly": random.choice(["YES", "YES", "YES", "NO"]),
                     }
                     flights.append(flight)
     
@@ -205,6 +208,7 @@ def generate_flights(count: int = 300) -> List[Dict]:
             "airport_congestion": round(random.uniform(0, 1), 2),
             "previous_flight_delay": round(random.uniform(0, 0.3), 2),
             "delay_probability": round(random.uniform(0, 1), 2),
+            "mobility_friendly": random.choice(["YES", "YES", "YES", "NO"]),
         }
         flights.append(flight)
     
@@ -226,15 +230,16 @@ def seed_flights(flights: List[Dict]):
         flight_id, airline, source, destination, date, departure_time, arrival_time,
         seats_available, price, status,
         fog_risk, rain_risk, wind_risk,
-        airport_congestion, previous_flight_delay, delay_probability
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        airport_congestion, previous_flight_delay, delay_probability, mobility_friendly
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         (
             f["flight_id"], f["airline"], f["source"], f["destination"], f["date"],
             f["departure_time"], f["arrival_time"],
             f["seats_available"], f["price"], f["status"],
             f["fog_risk"], f["rain_risk"], f["wind_risk"],
-            f["airport_congestion"], f["previous_flight_delay"], f["delay_probability"]
+            f["airport_congestion"], f["previous_flight_delay"], f["delay_probability"],
+            f["mobility_friendly"]
         )
         for f in flights
     ])
@@ -297,7 +302,7 @@ def setup_database():
     has_ai203 = cursor.fetchone()[0] > 0
     conn.close()
 
-    if "airline" not in columns or count < 300 or not has_ai203:
+    if "airline" not in columns or "mobility_friendly" not in columns or count < 300 or not has_ai203:
         print("📦 Rebuilding database with updated schema...")
         init_db()
         flights = generate_flights(300)
