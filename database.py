@@ -31,7 +31,7 @@ def init_db():
     # Drop existing table if present (fresh start)
     cursor.execute("DROP TABLE IF EXISTS flights")
     
-    # Create flights table
+    # Create flights table with relaxed constraints for API data
     cursor.execute("""
     CREATE TABLE flights (
         flight_id TEXT PRIMARY KEY,
@@ -41,16 +41,20 @@ def init_db():
         date TEXT NOT NULL,
         departure_time TEXT NOT NULL,
         arrival_time TEXT NOT NULL,
-        seats_available INTEGER NOT NULL,
-        price INTEGER NOT NULL,
+        seats_available INTEGER DEFAULT 0,
+        price INTEGER DEFAULT 0,
         status TEXT NOT NULL,
-        fog_risk REAL NOT NULL,
-        rain_risk REAL NOT NULL,
-        wind_risk REAL NOT NULL,
-        airport_congestion REAL NOT NULL,
-        previous_flight_delay REAL NOT NULL,
-        delay_probability REAL NOT NULL,
-        mobility_friendly TEXT NOT NULL DEFAULT 'YES'
+        fog_risk REAL DEFAULT 0.3,
+        rain_risk REAL DEFAULT 0.3,
+        wind_risk REAL DEFAULT 0.3,
+        airport_congestion REAL DEFAULT 0.5,
+        previous_flight_delay REAL DEFAULT 0.2,
+        delay_probability REAL DEFAULT 0.4,
+        mobility_friendly TEXT NOT NULL DEFAULT 'YES',
+        api_provider TEXT,
+        api_flight_key TEXT,
+        last_updated_utc TEXT,
+        raw_json TEXT
     )
     """)
     
@@ -270,16 +274,20 @@ def seed_flights(flights: List[Dict]):
         flight_id, airline, source, destination, date, departure_time, arrival_time,
         seats_available, price, status,
         fog_risk, rain_risk, wind_risk,
-        airport_congestion, previous_flight_delay, delay_probability, mobility_friendly
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        airport_congestion, previous_flight_delay, delay_probability, mobility_friendly,
+        api_provider, api_flight_key, last_updated_utc, raw_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         (
             f["flight_id"], f["airline"], f["source"], f["destination"], f["date"],
             f["departure_time"], f["arrival_time"],
-            f["seats_available"], f["price"], f["status"],
-            f["fog_risk"], f["rain_risk"], f["wind_risk"],
-            f["airport_congestion"], f["previous_flight_delay"], f["delay_probability"],
-            f["mobility_friendly"]
+            f.get("seats_available", 0), f.get("price", 0), f["status"],
+            f.get("fog_risk", 0.3), f.get("rain_risk", 0.3), f.get("wind_risk", 0.3),
+            f.get("airport_congestion", 0.5), f.get("previous_flight_delay", 0.2), 
+            f.get("delay_probability", 0.4),
+            f.get("mobility_friendly", "YES"),
+            f.get("api_provider"), f.get("api_flight_key"), 
+            f.get("last_updated_utc"), f.get("raw_json")
         )
         for f in flights
     ])
@@ -353,6 +361,86 @@ def setup_database():
         seed_flights(flights)
     else:
         print("✅ Database already exists")
+
+
+def sync_flights_from_api(source: str, destination: str, date: str) -> tuple[int, str]:
+    """
+    Sync flights from Aviationstack API into database.
+    
+    Args:
+        source: Source city name (e.g., 'Delhi')
+        destination: Destination city name (e.g., 'Mumbai')
+        date: Flight date in YYYY-MM-DD format
+        
+    Returns:
+        Tuple of (number_of_flights_synced, status_message)
+    """
+    try:
+        from providers.aviationstack import AviationstackClient, city_to_iata, iata_to_city
+        
+        # Check if API key is available
+        api_key = os.getenv("AVIATIONSTACK_API_KEY")
+        if not api_key:
+            return (0, "⚠️ API key not found. Set AVIATIONSTACK_API_KEY environment variable or use demo data.")
+        
+        # Convert city names to IATA codes
+        dep_iata = city_to_iata(source)
+        arr_iata = city_to_iata(destination)
+        
+        if not dep_iata or not arr_iata:
+            return (0, f"❌ Unknown airport for {source} or {destination}")
+        
+        # Fetch flights from API
+        client = AviationstackClient(api_key)
+        normalized_flights = client.fetch_and_normalize(
+            dep_iata=dep_iata,
+            arr_iata=arr_iata,
+            flight_date=date
+        )
+        
+        if not normalized_flights:
+            return (0, f"ℹ️ No flights found for {source} → {destination} on {date}")
+        
+        # Upsert into database
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        synced_count = 0
+        for flight in normalized_flights:
+            # Use INSERT OR REPLACE to upsert
+            cursor.execute("""
+            INSERT OR REPLACE INTO flights (
+                flight_id, airline, source, destination, date, departure_time, arrival_time,
+                seats_available, price, status,
+                fog_risk, rain_risk, wind_risk,
+                airport_congestion, previous_flight_delay, delay_probability, mobility_friendly,
+                api_provider, api_flight_key, last_updated_utc, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                flight["flight_id"], flight["airline"], flight["source"], flight["destination"],
+                flight["date"], flight["departure_time"], flight["arrival_time"],
+                flight.get("seats_available"), flight.get("price"), flight["status"],
+                flight.get("fog_risk"), flight.get("rain_risk"), flight.get("wind_risk"),
+                flight.get("airport_congestion"), flight.get("previous_flight_delay"),
+                flight.get("delay_probability"), flight.get("mobility_friendly", "YES"),
+                flight.get("api_provider"), flight.get("api_flight_key"),
+                flight.get("last_updated_utc"), flight.get("raw_json")
+            ))
+            synced_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        return (synced_count, f"✅ Synced {synced_count} live flights from Aviationstack API")
+        
+    except Exception as e:
+        return (0, f"❌ API sync failed: {str(e)}")
+
+
+def has_api_key() -> bool:
+    """Check if Aviationstack API key is configured."""
+    return bool(os.getenv("AVIATIONSTACK_API_KEY"))
+
 
 
 if __name__ == "__main__":

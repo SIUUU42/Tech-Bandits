@@ -200,6 +200,53 @@ def main():
     
     # Sidebar info
     with st.sidebar:
+        st.markdown("### 🌐 Live Flight Data Sync")
+        
+        # Check if API key is configured
+        from database import has_api_key
+        if has_api_key():
+            st.success("✅ API Key Configured")
+            
+            # Sync form
+            with st.form("sync_form"):
+                sync_source = st.selectbox(
+                    "Source City",
+                    ["Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
+                )
+                sync_destination = st.selectbox(
+                    "Destination City",
+                    ["Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
+                )
+                sync_date = st.date_input(
+                    "Flight Date",
+                    value=datetime.now()
+                )
+                
+                sync_button = st.form_submit_button("🔄 Sync Live Flights", use_container_width=True)
+                
+                if sync_button:
+                    with st.spinner("Fetching live data from Aviationstack..."):
+                        from database import sync_flights_from_api
+                        count, message = sync_flights_from_api(
+                            sync_source,
+                            sync_destination,
+                            sync_date.strftime("%Y-%m-%d")
+                        )
+                        
+                        if count > 0:
+                            st.success(message)
+                            # Clear cache to reflect new data
+                            st.cache_data.clear()
+                            st.cache_resource.clear()
+                            rerun()
+                        else:
+                            st.warning(message)
+        else:
+            st.info("ℹ️ Using demo data")
+            st.caption("Set `AVIATIONSTACK_API_KEY` environment variable to enable live data sync")
+        
+        st.markdown("---")
+        st.markdown("### 📌 How to use")
         st.markdown("### 📌 How to use")
         st.markdown("""
         1. **Chat Mode:** Ask natural questions
