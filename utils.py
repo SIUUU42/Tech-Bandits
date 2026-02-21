@@ -2,6 +2,8 @@
 Utility functions for the Flight Disruption Recovery Assistant.
 """
 
+import re
+
 def risk_label(score: float) -> str:
     """
     Convert numeric risk score (0-1) to UI label.
@@ -46,6 +48,7 @@ def format_flight_display(flight: dict) -> str:
         Formatted flight string
     """
     flight_id = flight.get("flight_id", "N/A")
+    airline = flight.get("airline", "N/A")
     source = flight.get("source", "N/A")
     destination = flight.get("destination", "N/A")
     departure_time = flight.get("departure_time", "N/A")
@@ -62,7 +65,7 @@ def format_flight_display(flight: dict) -> str:
     seats_category = "Plenty" if seats_available > 30 else "Limited" if seats_available > 10 else "Scarce"
     
     return f"""
-**✈️  {flight_id}** — {source} → {destination} — {departure_time}
+**✈️  {flight_id}** ({airline}) — {source} → {destination} — {departure_time}
 - **Seats:** {seats_available} ({seats_category})
 - **Weather Risk:** {weather_label}
 - **Delay Risk:** {delay_label}
@@ -80,11 +83,9 @@ def parse_flight_id_from_input(user_input: str) -> str:
     Returns:
         Flight ID if found, else empty string
     """
-    # Simple heuristic: look for all-caps words that look like flight IDs
-    words = user_input.split()
-    for word in words:
-        if len(word) >= 4 and len(word) <= 6 and any(c.isdigit() for c in word):
-            return word.upper()
+    match = re.search(r"\b[A-Za-z0-9]{2,3}\d{2,4}\b", user_input)
+    if match:
+        return match.group(0).upper()
     return ""
 
 

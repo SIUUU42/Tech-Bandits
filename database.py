@@ -10,6 +10,12 @@ from typing import List, Dict, Optional
 
 DB_PATH = "flights.db"
 
+AIRLINES = [
+    ("AI", "Air India"),
+    ("SG", "Spice Jet"),
+    ("6E", "Indigo"),
+]
+
 # Indian cities for realistic flights
 INDIAN_CITIES = [
     "Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai",
@@ -29,6 +35,7 @@ def init_db():
     cursor.execute("""
     CREATE TABLE flights (
         flight_id TEXT PRIMARY KEY,
+        airline TEXT NOT NULL,
         source TEXT NOT NULL,
         destination TEXT NOT NULL,
         date TEXT NOT NULL,
@@ -60,8 +67,7 @@ def init_db():
 
 def generate_flight_id() -> str:
     """Generate realistic Indian airline flight ID."""
-    airlines = ["AI", "SG", "BA", "6E", "UK", "I5", "G8"]  # Air India, SpiceJet, British, IndiGo, Vistara, etc.
-    airline = random.choice(airlines)
+    airline = random.choice([code for code, _ in AIRLINES])
     number = str(random.randint(100, 9999))
     return f"{airline}{number}"
 
@@ -95,6 +101,26 @@ def generate_flights(count: int = 300) -> List[Dict]:
         List of flight dictionaries
     """
     flights = []
+
+    fixed_flight = {
+        "flight_id": "AI203",
+        "airline": "Air India",
+        "source": "Delhi",
+        "destination": "Mumbai",
+        "date": "2026-02-22",
+        "departure_time": "09:00",
+        "arrival_time": "11:00",
+        "seats_available": 0,
+        "price": 5200,
+        "status": "Cancelled",
+        "fog_risk": 0.3,
+        "rain_risk": 0.4,
+        "wind_risk": 0.2,
+        "airport_congestion": 0.6,
+        "previous_flight_delay": 0.2,
+        "delay_probability": 0.7,
+    }
+    flights.append(fixed_flight)
     
     # Define main routes for heavy coverage
     main_routes = [
@@ -114,16 +140,14 @@ def generate_flights(count: int = 300) -> List[Dict]:
     # Dates: Feb 22 and Feb 23, 2026
     dates = ["2026-02-22", "2026-02-23"]
     
-    airlines = ["AI", "SG", "BA", "6E", "UK", "I5", "G8"]
-    
     # Generate flights for main routes
     flight_counter = 1000
     for source, destination in main_routes:
         for date in dates:
             for time_slot in [morning_times, afternoon_times, evening_times]:
                 for departure_time in time_slot:
-                    airline = random.choice(airlines)
-                    flight_id = f"{airline}{flight_counter}"
+                    airline_code, airline_name = random.choice(AIRLINES)
+                    flight_id = f"{airline_code}{flight_counter}"
                     flight_counter += 1
                     
                     # Add 1-2 hours travel time
@@ -131,6 +155,7 @@ def generate_flights(count: int = 300) -> List[Dict]:
                     
                     flight = {
                         "flight_id": flight_id,
+                        "airline": airline_name,
                         "source": source,
                         "destination": destination,
                         "date": date,
@@ -159,12 +184,13 @@ def generate_flights(count: int = 300) -> List[Dict]:
         departure_time = generate_time()
         arrival_time = add_hours_to_time(departure_time, random.randint(1, 3))
         
-        airline = random.choice(airlines)
-        flight_id = f"{airline}{flight_counter}"
+        airline_code, airline_name = random.choice(AIRLINES)
+        flight_id = f"{airline_code}{flight_counter}"
         flight_counter += 1
         
         flight = {
             "flight_id": flight_id,
+            "airline": airline_name,
             "source": source,
             "destination": destination,
             "date": date,
@@ -197,14 +223,14 @@ def seed_flights(flights: List[Dict]):
     
     cursor.executemany("""
     INSERT INTO flights (
-        flight_id, source, destination, date, departure_time, arrival_time,
+        flight_id, airline, source, destination, date, departure_time, arrival_time,
         seats_available, price, status,
         fog_risk, rain_risk, wind_risk,
         airport_congestion, previous_flight_delay, delay_probability
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         (
-            f["flight_id"], f["source"], f["destination"], f["date"],
+            f["flight_id"], f["airline"], f["source"], f["destination"], f["date"],
             f["departure_time"], f["arrival_time"],
             f["seats_available"], f["price"], f["status"],
             f["fog_risk"], f["rain_risk"], f["wind_risk"],
@@ -256,6 +282,23 @@ def setup_database():
     """Initialize database if it doesn't exist."""
     if not os.path.exists(DB_PATH):
         print("📦 Initializing database...")
+        init_db()
+        flights = generate_flights(300)
+        seed_flights(flights)
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(flights)")
+    columns = {row[1] for row in cursor.fetchall()}
+    cursor.execute("SELECT COUNT(*) FROM flights")
+    count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM flights WHERE flight_id = ?", ("AI203",))
+    has_ai203 = cursor.fetchone()[0] > 0
+    conn.close()
+
+    if "airline" not in columns or count < 300 or not has_ai203:
+        print("📦 Rebuilding database with updated schema...")
         init_db()
         flights = generate_flights(300)
         seed_flights(flights)

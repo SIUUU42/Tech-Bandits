@@ -6,6 +6,7 @@ Fast, intelligent Streamlit chat app for finding alternative flights during canc
 
 import streamlit as st
 import sqlite3
+import os
 from datetime import datetime
 from typing import List, Dict, Tuple
 import logging
@@ -60,7 +61,7 @@ def initialize_app():
 
 
 @st.cache_data
-def load_flight_count():
+def load_flight_count(db_mtime: float):
     """Cache flight count for stats."""
     try:
         conn = sqlite3.connect("flights.db")
@@ -71,6 +72,14 @@ def load_flight_count():
         return count
     except:
         return 0
+
+
+def _looks_like_flight_list(content: str) -> bool:
+    """Detect old duplicated flight lists in assistant messages."""
+    if not content:
+        return False
+    markers = ["✈️", "Seats:", "Weather Risk:", "Delay Risk:", "Price:"]
+    return any(marker in content for marker in markers)
 
 
 def render_chat_message(role: str, content: str, is_response: bool = False):
@@ -167,7 +176,8 @@ def main():
     
     # Initialize
     st.session_state.agent = initialize_app()
-    flight_count = load_flight_count()
+    db_mtime = os.path.getmtime("flights.db") if os.path.exists("flights.db") else 0
+    flight_count = load_flight_count(db_mtime)
     
     # Header
     col1, col2 = st.columns([0.7, 0.3])
@@ -211,11 +221,19 @@ def main():
     st.markdown("---")
     
     for message in st.session_state.messages:
-        render_chat_message(
-            role=message["role"],
-            content=message["content"],
-            is_response=(message["role"] == "assistant")
-        )
+        if message["role"] == "assistant" and message.get("flights"):
+            if not _looks_like_flight_list(message.get("content", "")):
+                render_chat_message(
+                    role=message["role"],
+                    content=message["content"],
+                    is_response=True
+                )
+        else:
+            render_chat_message(
+                role=message["role"],
+                content=message["content"],
+                is_response=(message["role"] == "assistant")
+            )
         
         # Render flights if present
         if message.get("flights"):

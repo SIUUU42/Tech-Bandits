@@ -107,17 +107,33 @@ class FlightDisruptionAgent:
         user_lower = user_input.lower()
         
         # Simple heuristic-based extraction
-        cities = ["delhi", "mumbai", "bangalore", "hyderabad", "chennai", "kolkata", 
-                 "pune", "ahmedabad", "jaipur", "lucknow", "kochi", "indore", 
-                 "chandigarh", "goa", "visakhapatnam"]
+        city_aliases = {
+            "delhi": "Delhi",
+            "mumbai": "Mumbai",
+            "bombay": "Mumbai",
+            "chennai": "Chennai",
+            "madras": "Chennai",
+            "bangalore": "Bangalore",
+            "hyderabad": "Hyderabad",
+            "kolkata": "Kolkata",
+            "pune": "Pune",
+            "ahmedabad": "Ahmedabad",
+            "jaipur": "Jaipur",
+            "lucknow": "Lucknow",
+            "kochi": "Kochi",
+            "indore": "Indore",
+            "chandigarh": "Chandigarh",
+            "goa": "Goa",
+            "visakhapatnam": "Visakhapatnam",
+        }
         
         words = user_lower.split()
         found_cities = []
         
         for word in words:
-            for city in cities:
-                if city in word:
-                    found_cities.append(city.capitalize())
+            for key, value in city_aliases.items():
+                if key in word:
+                    found_cities.append(value)
         
         if len(found_cities) >= 2:
             params["source"] = found_cities[0]
@@ -126,12 +142,17 @@ class FlightDisruptionAgent:
             params["destination"] = found_cities[0]
         
         # Extract time preferences
-        if any(kw in user_lower for kw in ["afternoon", "12", "13", "14", "15", "16", "17"]):
+        if any(kw in user_lower for kw in ["night", "late night", "midnight"]):
+            params["time_label"] = "night"
+        elif any(kw in user_lower for kw in ["afternoon", "12", "13", "14", "15", "16", "17"]):
             params["departure_window"] = ("12:00", "18:00")
+            params["time_label"] = "afternoon"
         elif any(kw in user_lower for kw in ["morning", "6", "7", "8", "9", "10", "11"]):
             params["departure_window"] = ("06:00", "12:00")
+            params["time_label"] = "morning"
         elif any(kw in user_lower for kw in ["evening", "18", "19", "20", "21"]):
             params["departure_window"] = ("18:00", "22:00")
+            params["time_label"] = "evening"
         
         # Extract date preferences
         if "tomorrow" in user_lower:
@@ -193,8 +214,51 @@ class FlightDisruptionAgent:
             
         else:  # search intent
             search_params = state.get("search_params", {})
-            results = self.sql_builder.search_flights(**search_params)
+            params = dict(search_params)
+            time_label = params.pop("time_label", None)
+            date_value = params.get("date")
+            fallback_note = ""
+
+            if time_label == "night":
+                night_params_late = dict(params)
+                night_params_late["departure_window"] = ("22:00", "23:59")
+                night_params_early = dict(params)
+                night_params_early["departure_window"] = ("00:00", "06:00")
+                results = self.sql_builder.search_flights(**night_params_late)
+                results += self.sql_builder.search_flights(**night_params_early)
+                results_by_id = {f["flight_id"]: f for f in results}
+                results = list(results_by_id.values())
+            else:
+                results = self.sql_builder.search_flights(**params)
+
+            if not results and time_label == "night":
+                params["departure_window"] = ("18:00", "22:00")
+                results = self.sql_builder.search_flights(**params)
+                if results:
+                    fallback_note = "🌙 Night flights are not available. Showing evening flights instead."
+
+            if not results and date_value:
+                try:
+                    date_obj = datetime.strptime(date_value, "%Y-%m-%d")
+                    next_date = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+                except Exception:
+                    next_date = date_value
+
+                params["date"] = next_date
+                if time_label == "night":
+                    if "departure_window" not in params:
+                        params["departure_window"] = ("18:00", "22:00")
+                    results = self.sql_builder.search_flights(**params)
+                else:
+                    results = self.sql_builder.search_flights(**params)
+
+                if results:
+                    if fallback_note:
+                        fallback_note += " "
+                    fallback_note += f"📅 No flights on {date_value}. Showing flights on {next_date} instead."
+
             state["query_results"] = results
+            state["fallback_note"] = fallback_note
         
         return state
     
@@ -255,16 +319,16 @@ class FlightDisruptionAgent:
             response_lines.append("🛫 **DISRUPTION RECOVERY MODE**\n")
             original = state.get("original_flight")
             if original:
-                response_lines.append(f"Original flight: **{original['flight_id']}** ({original['source']} → {original['destination']}) - CANCELLED\n")
-            response_lines.append("**Best alternatives:**\n")
+                response_lines.append(
+                    f"Original flight: **{original['flight_id']}** ({original['source']} → {original['destination']}) - CANCELLED\n"
+                )
+            response_lines.append("**Best alternatives are listed below.**\n")
         else:
-            response_lines.append("**Best available flights:**\n")
-        
-        for idx, (flight, score) in enumerate(ranked_flights, 1):
-            response_lines.append(format_flight_display(flight))
-            explanation = state.get("explanations", {}).get(flight["flight_id"], "")
-            if explanation:
-                response_lines.append(f"💡 *{explanation}*\n")
+            response_lines.append("**Best available flights are listed below.**\n")
+
+        fallback_note = state.get("fallback_note")
+        if fallback_note:
+            response_lines.append(f"{fallback_note}\n")
         
         state["response"] = "".join(response_lines)
         
