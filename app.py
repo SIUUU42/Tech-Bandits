@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Dict, Tuple
 import logging
 
-from database import setup_database, get_all_flights
+from database import setup_database, get_all_flights, sync_live_planes_to_db
 from agent import FlightDisruptionAgent
 from utils import format_flight_display, risk_label, calculate_weather_score
 
@@ -50,6 +50,9 @@ if "explanations" not in st.session_state:
 
 if "why_expanded" not in st.session_state:
     st.session_state.why_expanded = {}
+
+if "data_source_filter" not in st.session_state:
+    st.session_state.data_source_filter = "All"
 
 
 @st.cache_resource
@@ -143,6 +146,39 @@ def render_disruption_mode():
             st.sidebar.error("Please enter a flight ID")
 
 
+def render_live_data_section():
+    """Render the live data sync and filtering section."""
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🛰️ LIVE DATA")
+    st.sidebar.markdown("*Real-time aircraft from OpenSky Network*")
+    
+    if st.sidebar.button("Sync Live Planes (OpenSky)", use_container_width=True, key="sync_opensky"):
+        with st.spinner("Fetching live aircraft from OpenSky Network..."):
+            try:
+                stats = sync_live_planes_to_db()
+                
+                if stats.get("errors") and stats["errors"] > 0:
+                    error_msg = stats.get("error_msg", "Unknown error")
+                    st.sidebar.error(f"⚠️ Sync had errors: {error_msg}")
+                else:
+                    st.sidebar.success(
+                        f"✅ Synced {stats.get('live_planes', 0)} aircraft → "
+                        f"{stats.get('materialized_flights', 0)} flights"
+                    )
+                    # Force rerun to refresh flight data
+                    rerun()
+            except Exception as e:
+                st.sidebar.error(f"❌ Sync failed: {str(e)}")
+    
+    # Data source filter
+    st.session_state.data_source_filter = st.sidebar.selectbox(
+        "Data Source Filter",
+        ["All", "Live Only", "Fake Only"],
+        key="data_source_selectbox",
+        index=["All", "Live Only", "Fake Only"].index(st.session_state.data_source_filter)
+    )
+
+
 def process_user_input(user_input: str):
     """Process user input through agent."""
     if not user_input.strip():
@@ -151,10 +187,18 @@ def process_user_input(user_input: str):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": user_input})
     
+    # Convert UI data source filter to database value
+    filter_map = {
+        "All": None,
+        "Live Only": "opensky",
+        "Fake Only": "fake"
+    }
+    data_source = filter_map.get(st.session_state.data_source_filter, None)
+    
     # Get agent response
     try:
         agent = st.session_state.agent
-        response, ranked_flights = agent.run(user_input)
+        response, ranked_flights = agent.run(user_input, data_source=data_source)
         
         # Store ranked flights and explanations for later rendering
         st.session_state.last_ranked_flights = ranked_flights
@@ -200,53 +244,6 @@ def main():
     
     # Sidebar info
     with st.sidebar:
-        st.markdown("### 🌐 Live Flight Data Sync")
-        
-        # Check if API key is configured
-        from database import has_api_key
-        if has_api_key():
-            st.success("✅ API Key Configured")
-            
-            # Sync form
-            with st.form("sync_form"):
-                sync_source = st.selectbox(
-                    "Source City",
-                    ["Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
-                )
-                sync_destination = st.selectbox(
-                    "Destination City",
-                    ["Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
-                )
-                sync_date = st.date_input(
-                    "Flight Date",
-                    value=datetime.now()
-                )
-                
-                sync_button = st.form_submit_button("🔄 Sync Live Flights", use_container_width=True)
-                
-                if sync_button:
-                    with st.spinner("Fetching live data from Aviationstack..."):
-                        from database import sync_flights_from_api
-                        count, message = sync_flights_from_api(
-                            sync_source,
-                            sync_destination,
-                            sync_date.strftime("%Y-%m-%d")
-                        )
-                        
-                        if count > 0:
-                            st.success(message)
-                            # Clear cache to reflect new data
-                            st.cache_data.clear()
-                            st.cache_resource.clear()
-                            rerun()
-                        else:
-                            st.warning(message)
-        else:
-            st.info("ℹ️ Using demo data")
-            st.caption("Set `AVIATIONSTACK_API_KEY` environment variable to enable live data sync")
-        
-        st.markdown("---")
-        st.markdown("### 📌 How to use")
         st.markdown("### 📌 How to use")
         st.markdown("""
         1. **Chat Mode:** Ask natural questions
@@ -273,6 +270,9 @@ def main():
     
     # Render disruption mode
     render_disruption_mode()
+    
+    # Render live data section
+    render_live_data_section()
     
     # Render chat history
     st.markdown("---")

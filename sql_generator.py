@@ -26,7 +26,8 @@ class SQLQueryBuilder:
         departure_window: Optional[Tuple[str, str]] = None,
         exclude_flight_id: Optional[str] = None,
         status: str = "Active",
-        mobility_friendly: Optional[bool] = None
+        mobility_friendly: Optional[bool] = None,
+        data_source: Optional[str] = None
     ) -> List[Dict]:
         """
         Search flights with optional filters.
@@ -39,6 +40,7 @@ class SQLQueryBuilder:
             exclude_flight_id: Flight ID to exclude (for recovery flows)
             status: Flight status (default "Active")
             mobility_friendly: Filter by mobility-friendliness (True = YES, False = NO, None = no filter)
+            data_source: Filter by data source ('fake', 'opensky', None for all)
             
         Returns:
             List of matching flight records
@@ -75,6 +77,10 @@ class SQLQueryBuilder:
             mobility_value = "YES" if mobility_friendly else "NO"
             query += " AND mobility_friendly = ?"
             params.append(mobility_value)
+        
+        if data_source is not None:
+            query += " AND data_source = ?"
+            params.append(data_source)
         
         query += " AND status = ?"
         params.append(status)

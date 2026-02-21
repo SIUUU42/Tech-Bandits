@@ -5,6 +5,7 @@ Database initialization and flight data seeding.
 import sqlite3
 import os
 import random
+import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 
@@ -31,7 +32,7 @@ def init_db():
     # Drop existing table if present (fresh start)
     cursor.execute("DROP TABLE IF EXISTS flights")
     
-    # Create flights table with relaxed constraints for API data
+    # Create flights table
     cursor.execute("""
     CREATE TABLE flights (
         flight_id TEXT PRIMARY KEY,
@@ -41,20 +42,16 @@ def init_db():
         date TEXT NOT NULL,
         departure_time TEXT NOT NULL,
         arrival_time TEXT NOT NULL,
-        seats_available INTEGER DEFAULT 0,
-        price INTEGER DEFAULT 0,
+        seats_available INTEGER NOT NULL,
+        price INTEGER NOT NULL,
         status TEXT NOT NULL,
-        fog_risk REAL DEFAULT 0.3,
-        rain_risk REAL DEFAULT 0.3,
-        wind_risk REAL DEFAULT 0.3,
-        airport_congestion REAL DEFAULT 0.5,
-        previous_flight_delay REAL DEFAULT 0.2,
-        delay_probability REAL DEFAULT 0.4,
-        mobility_friendly TEXT NOT NULL DEFAULT 'YES',
-        api_provider TEXT,
-        api_flight_key TEXT,
-        last_updated_utc TEXT,
-        raw_json TEXT
+        fog_risk REAL NOT NULL,
+        rain_risk REAL NOT NULL,
+        wind_risk REAL NOT NULL,
+        airport_congestion REAL NOT NULL,
+        previous_flight_delay REAL NOT NULL,
+        delay_probability REAL NOT NULL,
+        mobility_friendly TEXT NOT NULL DEFAULT 'YES'
     )
     """)
     
@@ -274,20 +271,16 @@ def seed_flights(flights: List[Dict]):
         flight_id, airline, source, destination, date, departure_time, arrival_time,
         seats_available, price, status,
         fog_risk, rain_risk, wind_risk,
-        airport_congestion, previous_flight_delay, delay_probability, mobility_friendly,
-        api_provider, api_flight_key, last_updated_utc, raw_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        airport_congestion, previous_flight_delay, delay_probability, mobility_friendly
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         (
             f["flight_id"], f["airline"], f["source"], f["destination"], f["date"],
             f["departure_time"], f["arrival_time"],
-            f.get("seats_available", 0), f.get("price", 0), f["status"],
-            f.get("fog_risk", 0.3), f.get("rain_risk", 0.3), f.get("wind_risk", 0.3),
-            f.get("airport_congestion", 0.5), f.get("previous_flight_delay", 0.2), 
-            f.get("delay_probability", 0.4),
-            f.get("mobility_friendly", "YES"),
-            f.get("api_provider"), f.get("api_flight_key"), 
-            f.get("last_updated_utc"), f.get("raw_json")
+            f["seats_available"], f["price"], f["status"],
+            f["fog_risk"], f["rain_risk"], f["wind_risk"],
+            f["airport_congestion"], f["previous_flight_delay"], f["delay_probability"],
+            f["mobility_friendly"]
         )
         for f in flights
     ])
@@ -338,6 +331,7 @@ def setup_database():
         init_db()
         flights = generate_flights(300)
         seed_flights(flights)
+        migrate_schema()  # Add live data support
         return
 
     conn = sqlite3.connect(DB_PATH)
@@ -359,88 +353,182 @@ def setup_database():
         init_db()
         flights = generate_flights(300)
         seed_flights(flights)
-    else:
-        print("✅ Database already exists")
-
-
-def sync_flights_from_api(source: str, destination: str, date: str) -> tuple[int, str]:
-    """
-    Sync flights from Aviationstack API into database.
     
-    Args:
-        source: Source city name (e.g., 'Delhi')
-        destination: Destination city name (e.g., 'Mumbai')
-        date: Flight date in YYYY-MM-DD format
+    # Always run migration to ensure live data tables exist
+    migrate_schema()
+    print("✅ Database ready")
+
+
+def migrate_schema():
+    """
+    Migration-safe schema updates for live data support.
+    Adds live_planes table and new columns to flights without dropping data.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # Create live_planes table if not exists
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS live_planes (
+            icao24 TEXT PRIMARY KEY,
+            callsign TEXT,
+            origin_country TEXT,
+            last_contact_utc TEXT,
+            lat REAL,
+            lon REAL,
+            altitude_m REAL,
+            velocity_mps REAL,
+            heading_deg REAL,
+            on_ground INTEGER,
+            raw_json TEXT,
+            updated_at_utc TEXT
+        )
+        """)
         
+        # Add new columns to flights table if they don't exist
+        cursor.execute("PRAGMA table_info(flights)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        
+        # SQLite doesn't support adding NOT NULL columns to existing tables easily
+        # So we add them as nullable and handle defaults in code
+        if "data_source" not in existing_columns:
+            cursor.execute("ALTER TABLE flights ADD COLUMN data_source TEXT DEFAULT 'fake'")
+            print("  ➕ Added data_source column")
+        
+        if "raw_json" not in existing_columns:
+            cursor.execute("ALTER TABLE flights ADD COLUMN raw_json TEXT")
+            print("  ➕ Added raw_json column")
+        
+        if "last_updated_utc" not in existing_columns:
+            cursor.execute("ALTER TABLE flights ADD COLUMN last_updated_utc TEXT")
+            print("  ➕ Added last_updated_utc column")
+        
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"⚠️  Migration warning: {e}")
+    finally:
+        conn.close()
+
+
+def sync_live_planes_to_db() -> Dict[str, int]:
+    """
+    Fetch live aircraft data from OpenSky and materialize into flights table.
+    
     Returns:
-        Tuple of (number_of_flights_synced, status_message)
+        Dict with counts: {"live_planes": N, "materialized_flights": M, "errors": E}
     """
     try:
-        from providers.aviationstack import AviationstackClient, city_to_iata, iata_to_city
-        
-        # Check if API key is available
-        api_key = os.getenv("AVIATIONSTACK_API_KEY")
-        if not api_key:
-            return (0, "⚠️ API key not found. Set AVIATIONSTACK_API_KEY environment variable or use demo data.")
-        
-        # Convert city names to IATA codes
-        dep_iata = city_to_iata(source)
-        arr_iata = city_to_iata(destination)
-        
-        if not dep_iata or not arr_iata:
-            return (0, f"❌ Unknown airport for {source} or {destination}")
-        
-        # Fetch flights from API
-        client = AviationstackClient(api_key)
-        normalized_flights = client.fetch_and_normalize(
-            dep_iata=dep_iata,
-            arr_iata=arr_iata,
-            flight_date=date
+        from providers.opensky import (
+            fetch_india_flights, 
+            infer_airline_from_callsign,
+            infer_nearest_city
         )
+    except ImportError:
+        return {"live_planes": 0, "materialized_flights": 0, "errors": 1, 
+                "error_msg": "OpenSky provider not available"}
+    
+    stats = {"live_planes": 0, "materialized_flights": 0, "errors": 0}
+    
+    try:
+        # Fetch live data from OpenSky
+        print("🛰️  Fetching live flight data from OpenSky...")
+        planes = fetch_india_flights(timeout=15)
+        stats["live_planes"] = len(planes)
+        print(f"   Found {len(planes)} aircraft")
         
-        if not normalized_flights:
-            return (0, f"ℹ️ No flights found for {source} → {destination} on {date}")
+        if not planes:
+            return stats
         
-        # Upsert into database
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        synced_count = 0
-        for flight in normalized_flights:
-            # Use INSERT OR REPLACE to upsert
+        # Upsert into live_planes table
+        for plane in planes:
+            cursor.execute("""
+            INSERT OR REPLACE INTO live_planes (
+                icao24, callsign, origin_country, last_contact_utc,
+                lat, lon, altitude_m, velocity_mps, heading_deg, on_ground,
+                raw_json, updated_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                plane["icao24"],
+                plane["callsign"],
+                plane["origin_country"],
+                datetime.utcfromtimestamp(plane["last_contact"]).isoformat() if plane["last_contact"] else None,
+                plane["latitude"],
+                plane["longitude"],
+                plane["baro_altitude"],
+                plane["velocity"],
+                plane["true_track"],
+                1 if plane["on_ground"] else 0,
+                json.dumps(plane),
+                datetime.utcnow().isoformat()
+            ))
+        
+        # Materialize live_planes into flights table for UI compatibility
+        print("🔄 Materializing live planes into flights...")
+        now_utc = datetime.utcnow()
+        current_date = now_utc.strftime("%Y-%m-%d")
+        current_time = now_utc.strftime("%H:%M")
+        
+        for plane in planes:
+            # Generate pseudo flight record
+            callsign = plane["callsign"] or ""
+            flight_id = callsign.strip() if callsign.strip() else plane["icao24"]
+            airline = infer_airline_from_callsign(callsign) if callsign else plane["origin_country"]
+            
+            # Infer location
+            source, destination = infer_nearest_city(plane["latitude"], plane["longitude"])
+            
+            # Arrival time = departure + 2 hours (placeholder)
+            arrival_time = (now_utc +timedelta(hours=2)).strftime("%H:%M")
+            
+            # Status based on ground state
+            status = "On Ground" if plane.get("on_ground") else "Active"
+            
+            # Default risk values for live data
+            fog_risk = 0.2
+            rain_risk = 0.2
+            wind_risk = 0.2
+            airport_congestion = 0.3
+            previous_flight_delay = 0.2
+            delay_probability = 0.3
+            
+            # Insert or replace flight
             cursor.execute("""
             INSERT OR REPLACE INTO flights (
                 flight_id, airline, source, destination, date, departure_time, arrival_time,
                 seats_available, price, status,
                 fog_risk, rain_risk, wind_risk,
-                airport_congestion, previous_flight_delay, delay_probability, mobility_friendly,
-                api_provider, api_flight_key, last_updated_utc, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                airport_congestion, previous_flight_delay, delay_probability,
+                mobility_friendly, data_source, raw_json, last_updated_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                flight["flight_id"], flight["airline"], flight["source"], flight["destination"],
-                flight["date"], flight["departure_time"], flight["arrival_time"],
-                flight.get("seats_available"), flight.get("price"), flight["status"],
-                flight.get("fog_risk"), flight.get("rain_risk"), flight.get("wind_risk"),
-                flight.get("airport_congestion"), flight.get("previous_flight_delay"),
-                flight.get("delay_probability"), flight.get("mobility_friendly", "YES"),
-                flight.get("api_provider"), flight.get("api_flight_key"),
-                flight.get("last_updated_utc"), flight.get("raw_json")
+                flight_id, airline, source, destination, current_date, current_time, arrival_time,
+                0,  # seats_available unknown
+                0,  # price unknown
+                status,
+                fog_risk, rain_risk, wind_risk,
+                airport_congestion, previous_flight_delay, delay_probability,
+                "YES",  # Assume mobility friendly
+                "opensky",
+                json.dumps(plane),
+                now_utc.isoformat()
             ))
-            synced_count += 1
+            stats["materialized_flights"] += 1
         
         conn.commit()
         conn.close()
         
-        return (synced_count, f"✅ Synced {synced_count} live flights from Aviationstack API")
+        print(f"✅ Synced {stats['live_planes']} live planes → {stats['materialized_flights']} flights")
+        return stats
         
     except Exception as e:
-        return (0, f"❌ API sync failed: {str(e)}")
-
-
-def has_api_key() -> bool:
-    """Check if Aviationstack API key is configured."""
-    return bool(os.getenv("AVIATIONSTACK_API_KEY"))
-
+        stats["errors"] = 1
+        stats["error_msg"] = str(e)
+        print(f"❌ Error syncing live data: {e}")
+        return stats
 
 
 if __name__ == "__main__":

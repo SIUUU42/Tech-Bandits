@@ -207,10 +207,12 @@ class FlightDisruptionAgent:
             if not alternatives:
                 source = original.get("source")
                 destination = original.get("destination")
+                data_source = state.get("data_source")
                 # Get any active flights from that source to nearby destinations
                 alternatives = self.sql_builder.search_flights(
                     source=source,
-                    status="Active"
+                    status="Active",
+                    data_source=data_source
                 )[:10]
             
             state["query_results"] = alternatives
@@ -251,10 +253,12 @@ class FlightDisruptionAgent:
             # Try to find flights with time preference
             results = []
             used_fallback_window = None
+            data_source = state.get("data_source")
             if time_label and time_label in time_fallbacks:
                 for idx, window in enumerate(time_fallbacks[time_label]):
                     test_params = dict(params)
                     test_params["departure_window"] = window
+                    test_params["data_source"] = data_source
                     results = self.sql_builder.search_flights(**test_params)
                     if results:
                         if idx > 0:
@@ -262,6 +266,7 @@ class FlightDisruptionAgent:
                             fallback_note = f"⏰ No {time_label} flights available. Showing {time_to_label.get(window, 'other')} flights instead."
                         break
             else:
+                params["data_source"] = data_source
                 results = self.sql_builder.search_flights(**params)
 
             # If still no results and we have a date, try next day
@@ -279,6 +284,7 @@ class FlightDisruptionAgent:
                     for idx, window in enumerate(time_fallbacks[time_label]):
                         test_params = dict(params)
                         test_params["departure_window"] = window
+                        test_params["data_source"] = data_source
                         results = self.sql_builder.search_flights(**test_params)
                         if results:
                             suffix = f"📅 No flights on {date_value}. "
@@ -291,10 +297,12 @@ class FlightDisruptionAgent:
                     
                     # If still no results, try without time constraint
                     if not results:
+                        params["data_source"] = data_source
                         results = self.sql_builder.search_flights(**params)
                         if results:
                             fallback_note = f"📅 No {time_label} flights available on {date_value} or {next_date}. Showing all available flights on {next_date} instead."
                 else:
+                    params["data_source"] = data_source
                     results = self.sql_builder.search_flights(**params)
                     if results:
                         fallback_note = f"📅 No flights on {date_value}. Showing flights on {next_date} instead."
@@ -386,18 +394,20 @@ class FlightDisruptionAgent:
         
         return state
     
-    def run(self, user_input: str) -> tuple[str, List[Dict]]:
+    def run(self, user_input: str, data_source: Optional[str] = None) -> tuple[str, List[Dict]]:
         """
         Execute the full agent workflow.
         
         Args:
             user_input: User's text input
+            data_source: Filter by data source ('fake', 'opensky', or None for all)
             
         Returns:
             (response_text, ranked_flights)
         """
         # Step 1: Extract intent
         state = self.intent_extractor(user_input)
+        state["data_source"] = data_source
         
         # Step 2: Query database
         state = self.db_query_node(state)

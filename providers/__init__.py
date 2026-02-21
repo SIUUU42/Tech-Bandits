@@ -1,3 +1,3 @@
 """
-Providers package for external flight data APIs.
+Providers package for external data sources.
 """
