@@ -14,6 +14,14 @@ from database import setup_database, get_all_flights
 from agent import FlightDisruptionAgent
 from utils import format_flight_display, risk_label, calculate_weather_score
 
+# Compatibility for different Streamlit versions
+def rerun():
+    """Trigger app rerun - compatible with different Streamlit versions."""
+    try:
+        st.rerun()
+    except AttributeError:
+        st.experimental_rerun()
+
 # Configure page
 st.set_page_config(
     page_title="✈️ Flight Recovery Assistant",
@@ -76,7 +84,7 @@ def render_chat_message(role: str, content: str, is_response: bool = False):
 
 def render_flight_with_explanation(flight: Dict, explanation: str, flight_id: str):
     """Render flight card with 'Why this flight?' button."""
-    with st.container(border=True):
+    with st.container():
         # Flight info
         st.markdown(format_flight_display(flight))
         
@@ -111,7 +119,7 @@ def render_disruption_mode():
     if st.sidebar.button("🔍 Find Alternatives", use_container_width=True):
         if disruption_flight_id.strip():
             st.session_state.disruption_query = disruption_flight_id.strip()
-            st.rerun()
+            rerun()
         else:
             st.sidebar.error("Please enter a flight ID")
 
@@ -230,7 +238,7 @@ def main():
         user_input = st.session_state.disruption_query
         del st.session_state.disruption_query
         process_user_input(user_input)
-        st.rerun()
+        rerun()
     else:
         # Normal chat input
         user_input = st.chat_input(
@@ -240,7 +248,7 @@ def main():
         
         if user_input:
             process_user_input(user_input)
-            st.rerun()
+            rerun()
     
     # Footer
     st.markdown("---")
