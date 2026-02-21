@@ -83,28 +83,88 @@ def add_hours_to_time(time_str: str, hours: int) -> str:
         return "23:59"
 
 
-def generate_flights(count: int = 150) -> List[Dict]:
+def generate_flights(count: int = 300) -> List[Dict]:
     """
-    Generate realistic Indian domestic flight data.
+    Generate realistic Indian domestic flight data with focus on 
+    Delhi, Mumbai, Pune routes with morning, afternoon, and evening flights.
     
     Args:
-        count: Number of flights to generate (default 150)
+        count: Number of flights to generate (default 300)
         
     Returns:
         List of flight dictionaries
     """
     flights = []
+    
+    # Define main routes for heavy coverage
+    main_routes = [
+        ("Delhi", "Mumbai"),
+        ("Mumbai", "Delhi"),
+        ("Delhi", "Pune"),
+        ("Pune", "Delhi"),
+        ("Mumbai", "Pune"),
+        ("Pune", "Mumbai"),
+    ]
+    
+    # Times for each session
+    morning_times = ["06:00", "07:30", "09:00", "10:30"]
+    afternoon_times = ["12:00", "13:30", "14:30", "15:30", "16:00", "17:30"]
+    evening_times = ["18:00", "19:30", "20:00", "21:00"]
+    
+    # Dates: Feb 22 and Feb 23, 2026
+    dates = ["2026-02-22", "2026-02-23"]
+    
+    airlines = ["AI", "SG", "BA", "6E", "UK", "I5", "G8"]
+    
+    # Generate flights for main routes
+    flight_counter = 1000
+    for source, destination in main_routes:
+        for date in dates:
+            for time_slot in [morning_times, afternoon_times, evening_times]:
+                for departure_time in time_slot:
+                    airline = random.choice(airlines)
+                    flight_id = f"{airline}{flight_counter}"
+                    flight_counter += 1
+                    
+                    # Add 1-2 hours travel time
+                    arrival_time = add_hours_to_time(departure_time, random.randint(1, 2))
+                    
+                    flight = {
+                        "flight_id": flight_id,
+                        "source": source,
+                        "destination": destination,
+                        "date": date,
+                        "departure_time": departure_time,
+                        "arrival_time": arrival_time,
+                        "seats_available": random.randint(5, 95),
+                        "price": random.randint(3000, 10000),
+                        "status": random.choice(["Active", "Active", "Active", "Active", "Cancelled"]),
+                        "fog_risk": round(random.uniform(0, 0.6), 2),
+                        "rain_risk": round(random.uniform(0, 0.6), 2),
+                        "wind_risk": round(random.uniform(0, 0.4), 2),
+                        "airport_congestion": round(random.uniform(0, 0.8), 2),
+                        "previous_flight_delay": round(random.uniform(0, 0.3), 2),
+                        "delay_probability": round(random.uniform(0, 0.7), 2),
+                    }
+                    flights.append(flight)
+    
+    # Pad with random flights to other cities
+    remaining = count - len(flights)
     base_date = datetime.now() + timedelta(days=1)
     
-    for i in range(count):
+    for i in range(remaining):
         source = random.choice(INDIAN_CITIES)
         destination = random.choice([c for c in INDIAN_CITIES if c != source])
-        date = (base_date + timedelta(days=random.randint(0, 7))).strftime("%Y-%m-%d")
+        date = (base_date + timedelta(days=random.randint(0, 5))).strftime("%Y-%m-%d")
         departure_time = generate_time()
         arrival_time = add_hours_to_time(departure_time, random.randint(1, 3))
         
+        airline = random.choice(airlines)
+        flight_id = f"{airline}{flight_counter}"
+        flight_counter += 1
+        
         flight = {
-            "flight_id": generate_flight_id(),
+            "flight_id": flight_id,
             "source": source,
             "destination": destination,
             "date": date,
@@ -197,7 +257,7 @@ def setup_database():
     if not os.path.exists(DB_PATH):
         print("📦 Initializing database...")
         init_db()
-        flights = generate_flights(150)
+        flights = generate_flights(300)
         seed_flights(flights)
     else:
         print("✅ Database already exists")
