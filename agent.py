@@ -219,24 +219,39 @@ class FlightDisruptionAgent:
             date_value = params.get("date")
             fallback_note = ""
 
-            if time_label == "night":
-                night_params_late = dict(params)
-                night_params_late["departure_window"] = ("22:00", "23:59")
-                night_params_early = dict(params)
-                night_params_early["departure_window"] = ("00:00", "06:00")
-                results = self.sql_builder.search_flights(**night_params_late)
-                results += self.sql_builder.search_flights(**night_params_early)
-                results_by_id = {f["flight_id"]: f for f in results}
-                results = list(results_by_id.values())
+            # Define time window fallback chain
+            time_fallbacks = {
+                "night": [("22:00", "23:59"), ("00:00", "06:00"), ("18:00", "22:00"), ("12:00", "18:00")],
+                "evening": [("18:00", "22:00"), ("12:00", "18:00"), ("06:00", "12:00")],
+                "afternoon": [("12:00", "18:00"), ("06:00", "12:00"), ("18:00", "22:00")],
+                "morning": [("06:00", "12:00"), ("12:00", "18:00"), ("18:00", "22:00")],
+            }
+
+            time_to_label = {
+                ("22:00", "23:59"): "night (late)",
+                ("00:00", "06:00"): "early morning",
+                ("18:00", "22:00"): "evening",
+                ("12:00", "18:00"): "afternoon",
+                ("06:00", "12:00"): "morning",
+            }
+
+            # Try to find flights with time preference
+            results = []
+            used_fallback_window = None
+            if time_label and time_label in time_fallbacks:
+                for idx, window in enumerate(time_fallbacks[time_label]):
+                    test_params = dict(params)
+                    test_params["departure_window"] = window
+                    results = self.sql_builder.search_flights(**test_params)
+                    if results:
+                        if idx > 0:
+                            used_fallback_window = window
+                            fallback_note = f"⏰ No {time_label} flights available. Showing {time_to_label.get(window, 'other')} flights instead."
+                        break
             else:
                 results = self.sql_builder.search_flights(**params)
 
-            if not results and time_label == "night":
-                params["departure_window"] = ("18:00", "22:00")
-                results = self.sql_builder.search_flights(**params)
-                if results:
-                    fallback_note = "🌙 Night flights are not available. Showing evening flights instead."
-
+            # If still no results and we have a date, try next day
             if not results and date_value:
                 try:
                     date_obj = datetime.strptime(date_value, "%Y-%m-%d")
@@ -245,17 +260,31 @@ class FlightDisruptionAgent:
                     next_date = date_value
 
                 params["date"] = next_date
-                if time_label == "night":
-                    if "departure_window" not in params:
-                        params["departure_window"] = ("18:00", "22:00")
-                    results = self.sql_builder.search_flights(**params)
+
+                # Retry with next day using time windows
+                if time_label and time_label in time_fallbacks:
+                    for idx, window in enumerate(time_fallbacks[time_label]):
+                        test_params = dict(params)
+                        test_params["departure_window"] = window
+                        results = self.sql_builder.search_flights(**test_params)
+                        if results:
+                            suffix = f"📅 No flights on {date_value}. "
+                            if idx > 0:
+                                suffix += f"Showing {time_to_label.get(window, 'other')} flights on {next_date} instead."
+                            else:
+                                suffix += f"Showing {time_label} flights on {next_date} instead."
+                            fallback_note = suffix
+                            break
+                    
+                    # If still no results, try without time constraint
+                    if not results:
+                        results = self.sql_builder.search_flights(**params)
+                        if results:
+                            fallback_note = f"📅 No {time_label} flights available on {date_value} or {next_date}. Showing all available flights on {next_date} instead."
                 else:
                     results = self.sql_builder.search_flights(**params)
-
-                if results:
-                    if fallback_note:
-                        fallback_note += " "
-                    fallback_note += f"📅 No flights on {date_value}. Showing flights on {next_date} instead."
+                    if results:
+                        fallback_note = f"📅 No flights on {date_value}. Showing flights on {next_date} instead."
 
             state["query_results"] = results
             state["fallback_note"] = fallback_note

@@ -91,24 +91,34 @@ def render_chat_message(role: str, content: str, is_response: bool = False):
             st.write(content)
 
 
-def render_flight_with_explanation(flight: Dict, explanation: str, flight_id: str):
-    """Render flight card with 'Why this flight?' button."""
+def render_flight_with_explanation(flight: Dict, explanation: str, flight_id: str, unique_id: str = None):
+    """Render flight card with 'Why this flight?' button.
+    
+    Args:
+        flight: Flight data dict
+        explanation: Ranking explanation text
+        flight_id: Flight identifier
+        unique_id: Unique identifier for this render (to avoid duplicate keys across messages)
+    """
+    if unique_id is None:
+        unique_id = flight_id
+    
     with st.container():
         # Flight info
         st.markdown(format_flight_display(flight))
         
-        # Why this flight button
+        # Why this flight button with unique key
         col1, col2 = st.columns([0.3, 0.7])
         with col1:
             if st.button(
                 "💡 Why this flight?",
-                key=f"why_{flight_id}",
+                key=f"why_{unique_id}",
                 use_container_width=True
             ):
-                st.session_state.why_expanded[flight_id] = not st.session_state.why_expanded.get(flight_id, False)
+                st.session_state.why_expanded[unique_id] = not st.session_state.why_expanded.get(unique_id, False)
         
         # Show explanation if expanded
-        if st.session_state.why_expanded.get(flight_id, False):
+        if st.session_state.why_expanded.get(unique_id, False):
             with col2:
                 st.info(explanation)
 
@@ -220,7 +230,7 @@ def main():
     # Render chat history
     st.markdown("---")
     
-    for message in st.session_state.messages:
+    for msg_idx, message in enumerate(st.session_state.messages):
         if message["role"] == "assistant" and message.get("flights"):
             if not _looks_like_flight_list(message.get("content", "")):
                 render_chat_message(
@@ -237,15 +247,18 @@ def main():
         
         # Render flights if present
         if message.get("flights"):
-            for flight, score in message["flights"]:
+            for flight_idx, (flight, score) in enumerate(message["flights"]):
                 explanation = st.session_state.explanations.get(
                     flight["flight_id"],
                     "Selected as one of the best available options."
                 )
+                # Create unique ID combining message and flight index
+                unique_id = f"msg{msg_idx}_flight{flight_idx}_{flight['flight_id']}"
                 render_flight_with_explanation(
                     flight,
                     explanation,
-                    flight["flight_id"]
+                    flight["flight_id"],
+                    unique_id=unique_id
                 )
     
     # Chat input
