@@ -228,6 +228,9 @@ class FlightDisruptionAgent:
             # Add mobility note if filter is applied
             if mobility_friendly:
                 mobility_note = "♿ **Showing mobility-friendly flights only.**\n"
+            
+            # Store accessibility request status in state for explanations
+            state["accessibility_requested"] = mobility_friendly or False
 
             # Define time window fallback chain
             time_fallbacks = {
@@ -323,8 +326,13 @@ class FlightDisruptionAgent:
         
         # Store explanations
         explanations = {}
+        accessibility_requested = state.get("accessibility_requested", False)
         for flight, score in ranked:
-            explanations[flight["flight_id"]] = self.ranking_engine.generate_explanation(flight, score)
+            explanations[flight["flight_id"]] = self.ranking_engine.generate_explanation(
+                flight, 
+                score,
+                accessibility_requested=accessibility_requested
+            )
         state["explanations"] = explanations
         
         return state

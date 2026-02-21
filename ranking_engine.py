@@ -148,13 +148,14 @@ class RankingEngine:
         scored_flights.sort(key=lambda x: x[1], reverse=True)
         return scored_flights[:top_n]
     
-    def generate_explanation(self, flight: Dict, score: float) -> str:
+    def generate_explanation(self, flight: Dict, score: float, accessibility_requested: bool = False) -> str:
         """
         Generate human-readable explanation for why a flight was ranked.
         
         Args:
             flight: Flight record
             score: Flight's calculated score
+            accessibility_requested: Whether user requested accessibility-friendly flights
             
         Returns:
             Explanation string
@@ -197,6 +198,10 @@ class RankingEngine:
             factors.append("high on-time reliability")
         elif reliability_score > 0.4:
             factors.append("good reliability track record")
+        
+        # Add accessibility information if requested
+        if accessibility_requested and flight.get("mobility_friendly") == "YES":
+            factors.append("accessibility for specially-abled passengers")
         
         if not factors:
             return "Selected as one of the best available options."
