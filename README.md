@@ -4,6 +4,8 @@
 
 Built for hackathons with a focus on speed, clarity, and intelligent disruption recovery.
 
+![Flight Disruption Recovery Assistant](assets/basic.png)
+
 ---
 
 ## 🎯 Features
@@ -153,6 +155,10 @@ utils.py
 ├── Flight display formatting
 └── Time preference utilities
 ```
+
+### System Architecture Diagram
+
+![UML Diagram](assets/umldiagram.png)
 
 ---
 
