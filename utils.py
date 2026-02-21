@@ -88,7 +88,7 @@ def parse_flight_id_from_input(user_input: str) -> str:
     Returns:
         Flight ID if found, else empty string
     """
-    match = re.search(r"\b[A-Za-z0-9]{2,3}\d{2,4}\b", user_input)
+    match = re.search(r"\b[A-Za-z]{1,3}\d{2,4}\b", user_input)
     if match:
         return match.group(0).upper()
     return ""

@@ -103,26 +103,66 @@ def generate_flights(count: int = 300) -> List[Dict]:
     """
     flights = []
 
-    fixed_flight = {
-        "flight_id": "AI203",
-        "airline": "Air India",
-        "source": "Delhi",
-        "destination": "Mumbai",
-        "date": "2026-02-22",
-        "departure_time": "09:00",
-        "arrival_time": "11:00",
-        "seats_available": 0,
-        "price": 5200,
-        "status": "Cancelled",
-        "fog_risk": 0.3,
-        "rain_risk": 0.4,
-        "wind_risk": 0.2,
-        "airport_congestion": 0.6,
-        "previous_flight_delay": 0.2,
-        "delay_probability": 0.7,
-        "mobility_friendly": "YES",
-    }
-    flights.append(fixed_flight)
+    fixed_flights = [
+        {
+            "flight_id": "AI203",
+            "airline": "Air India",
+            "source": "Delhi",
+            "destination": "Mumbai",
+            "date": "2026-02-22",
+            "departure_time": "09:00",
+            "arrival_time": "11:00",
+            "seats_available": 0,
+            "price": 5200,
+            "status": "Cancelled",
+            "fog_risk": 0.3,
+            "rain_risk": 0.4,
+            "wind_risk": 0.2,
+            "airport_congestion": 0.6,
+            "previous_flight_delay": 0.2,
+            "delay_probability": 0.7,
+            "mobility_friendly": "YES",
+        },
+        {
+            "flight_id": "A1203",
+            "airline": "Air India",
+            "source": "Delhi",
+            "destination": "Mumbai",
+            "date": "2026-02-22",
+            "departure_time": "09:00",
+            "arrival_time": "11:00",
+            "seats_available": 0,
+            "price": 5200,
+            "status": "Cancelled",
+            "fog_risk": 0.3,
+            "rain_risk": 0.4,
+            "wind_risk": 0.2,
+            "airport_congestion": 0.6,
+            "previous_flight_delay": 0.2,
+            "delay_probability": 0.7,
+            "mobility_friendly": "YES",
+        },
+        {
+            "flight_id": "SG999",
+            "airline": "Spice Jet",
+            "source": "Delhi",
+            "destination": "Pune",
+            "date": "2026-02-22",
+            "departure_time": "10:30",
+            "arrival_time": "12:00",
+            "seats_available": 24,
+            "price": 4100,
+            "status": "Active",
+            "fog_risk": 0.2,
+            "rain_risk": 0.3,
+            "wind_risk": 0.2,
+            "airport_congestion": 0.5,
+            "previous_flight_delay": 0.2,
+            "delay_probability": 0.3,
+            "mobility_friendly": "NO",
+        },
+    ]
+    flights.extend(fixed_flights)
     
     # Define main routes for heavy coverage
     main_routes = [
@@ -300,9 +340,13 @@ def setup_database():
     count = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM flights WHERE flight_id = ?", ("AI203",))
     has_ai203 = cursor.fetchone()[0] > 0
+    cursor.execute("SELECT COUNT(*) FROM flights WHERE flight_id = ?", ("A1203",))
+    has_a1203 = cursor.fetchone()[0] > 0
+    cursor.execute("SELECT COUNT(*) FROM flights WHERE flight_id = ?", ("SG999",))
+    has_sg999 = cursor.fetchone()[0] > 0
     conn.close()
 
-    if "airline" not in columns or "mobility_friendly" not in columns or count < 300 or not has_ai203:
+    if "airline" not in columns or "mobility_friendly" not in columns or count < 300 or not has_ai203 or not has_a1203 or not has_sg999:
         print("📦 Rebuilding database with updated schema...")
         init_db()
         flights = generate_flights(300)

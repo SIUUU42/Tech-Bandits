@@ -376,7 +376,7 @@ class FlightDisruptionAgent:
 
         mobility_note = state.get("mobility_note", "")
         if mobility_note:
-            response_lines.append(f"{mobility_note}")
+            response_lines.append("We've found the best possible flights for you while keeping in mind mobility concerns.\n")
         
         fallback_note = state.get("fallback_note")
         if fallback_note:
