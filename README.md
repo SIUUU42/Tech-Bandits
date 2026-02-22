@@ -83,6 +83,55 @@ The app will open in your browser at `http://localhost:8501`
 
 ---
 
+## �️ Live Data Architecture
+
+### How It Works
+
+This app features a **hybrid offline/online architecture** using real-time flight data from OpenSky Network API:
+
+- **Online Mode (WiFi ON)**: Click "Sync Live Planes" to fetch current aircraft from OpenSky API
+- **Offline Mode (WiFi OFF)**: Browse previously synced flight data from local database
+- **Storage**: SQLite database (`flights.db`) - all data is cached locally on your machine
+
+### Sync Workflow
+
+1. **Connect to internet** (WiFi/mobile data)
+2. **Launch app**: `streamlit run app.py`
+3. **Sidebar → Click "Sync Live Planes (OpenSky)"**
+4. **Wait 5-10 seconds** - fetches ~150-200 aircraft over India
+5. **Data saved to local database** - no cloud storage needed
+6. **Now works offline** - browse and search without internet
+
+### Why It Works Offline
+
+The app uses a **snapshot-based caching model**:
+
+- `flights.db` is a local SQLite file on your computer
+- Streamlit runs on `localhost:8501` (your own machine)
+- No internet needed to query the local database
+- **Think of it like downloading a video vs streaming** - once synced, it's yours
+
+### When to Sync Again
+
+Sync fresh data when:
+- Aircraft positions are stale (after several hours)
+- Before demos/presentations to show current flights
+- After major time zone changes (morning vs evening traffic patterns)
+- To capture peak flight hours (7-9 AM, 5-7 PM is best)
+
+### Data Sources
+
+The app supports **dual data sources**:
+
+1. **Live Data (OpenSky Network)** - Real aircraft with actual positions, speed, altitude
+2. **Fake Data (Synthetic Database)** - 300 realistic Indian flights for testing
+
+**Default filter**: "Live Only" mode (synced flights take priority)
+
+Toggle in sidebar to switch between fake/live/all data sources.
+
+---
+
 ## 📝 How to Use
 
 ### Mode 1: Natural Language Search
@@ -113,6 +162,15 @@ Each flight has explainability button
 Shows: "Selected due to low weather risk, available seats, and optimal afternoon timing."
 ```
 
+### Mode 5: Sync Live Flights (NEW)
+```
+1. Ensure internet connection
+2. Sidebar → "Sync Live Planes (OpenSky)"
+3. Wait for sync to complete
+4. See real aircraft over India
+5. Works offline after sync
+```
+
 ---
 
 ## 🏗️ Architecture
@@ -121,6 +179,7 @@ Shows: "Selected due to low weather risk, available seats, and optimal afternoon
 app.py
 ├── Streamlit UI (chat, disruption mode, explainability)
 ├── Session state management
+├── Live data sync controls (OpenSky integration)
 └── Caching for performance
 
 agent.py (LangGraph-like workflow)
@@ -141,13 +200,23 @@ sql_generator.py
 ├── Safe parameterized SQL queries
 ├── Search flights with optional filters
 ├── Get alternatives for disrupted flights
+├── Handle "Unknown" destinations (OpenSky live data)
 └── Prevent SQL injection
 
 database.py
 ├── SQLite schema initialization
-├── Flight data generation (150 realistic flights)
+├── Flight data generation (300 realistic flights)
+├── OpenSky live data sync (fetch_india_flights)
+├── Data source column migration (fake vs live)
 ├── City and time generation
 └── Database seeding
+
+providers/opensky.py (NEW)
+├── fetch_india_flights: Real-time aircraft tracking
+├── India bounding box: 6.5-35.5°N, 68.0-97.5°E
+├── infer_airline_from_callsign: AI→Air India, 6E→IndiGo
+├── infer_nearest_city: Distance calculation to 9 major cities
+└── No authentication required (public API)
 
 utils.py
 ├── Risk label mapping (numeric → Low/Medium/High)
@@ -203,16 +272,27 @@ CREATE TABLE flights (
     wind_risk REAL,
     airport_congestion REAL,
     previous_flight_delay REAL,
-    delay_probability REAL
+    delay_probability REAL,
+    -- New columns for OpenSky integration
+    data_source TEXT DEFAULT 'fake',  -- 'fake' or 'opensky'
+    raw_json TEXT,                    -- Original API response
+    last_updated_utc TEXT             -- Sync timestamp
 );
 
-Indexes on: source, destination, date, departure_time, status, flight_id
+Indexes on: source, destination, date, departure_time, status, flight_id, data_source
 ```
 
-**Sample Data:** 150 flights across 15 Indian cities
+**Sample Data:** 
+- **189 live flights** from OpenSky Network (after sync)
+- **300 fake flights** for testing and demos
 - Routes: Delhi, Mumbai, Bangalore, Hyderabad, Chennai, etc.
 - Realistic times, prices, and risk values
 - Mix of Active/Cancelled flights
+
+**Live Flight Columns:**
+- Live flights may have `destination = 'Unknown'` (inferred from nearest city)
+- `raw_json` stores original OpenSky API response
+- `last_updated_utc` tracks when data was synced
 
 ---
 
@@ -332,6 +412,9 @@ time_preference_score()  # Modify afternoon window
 - Date range limited to next 7 days
 - Single LLM not integrated yet (agent is rule-based)
 - No real weather API integration
+- **Live data is snapshot-based** (not real-time streaming)
+- **OpenSky destinations are inferred** (may show "Unknown" if can't determine)
+- **Live flights have limited historical data** (weather/congestion estimates only)
 
 **These are intentionally simplified for hackathon speed!**
 
@@ -341,15 +424,18 @@ time_preference_score()  # Modify afternoon window
 
 ```
 Tech-Bandits/
-├── app.py                 (Streamlit UI - main entry point)
-├── agent.py              (LangGraph-like agent workflow)
-├── ranking_engine.py     (Flight scoring and ranking)
-├── sql_generator.py      (Safe SQL query builder)
-├── database.py           (SQLite schema and seeding)
-├── utils.py              (Utility functions)
-├── requirements.txt      (Python dependencies)
-├── README.md             (This file)
-└── flights.db            (SQLite database - auto-generated)
+├── app.py                      (Streamlit UI - main entry point)
+├── agent.py                   (LangGraph-like agent workflow)
+├── ranking_engine.py          (Flight scoring and ranking)
+├── sql_generator.py           (Safe SQL query builder)
+├── database.py                (SQLite schema and seeding)
+├── utils.py                   (Utility functions)
+├── providers/
+│   └── opensky.py            (OpenSky Network API integration)
+├── requirements.txt           (Python dependencies)
+├── README.md                  (This file)
+├── goal.md                    (Project specification)
+└── flights.db                 (SQLite database - auto-generated)
 ```
 
 ---
@@ -372,9 +458,13 @@ Open source - use freely for learning and development.
 # Final checklist
 1. pip install -r requirements.txt
 2. streamlit run app.py
-3. Try disruption mode: "AI203"
-4. Show search: "Delhi to Pune tomorrow"
-5. Click "Why this flight?" - BOOM! 🚀
+3. FIRST TIME: Click "Sync Live Planes" (needs internet)
+4. Try disruption mode: "AI203"
+5. Show search: "Delhi to Pune tomorrow"
+6. Click "Why this flight?" - BOOM! 🚀
+7. Turn OFF WiFi - still works! (cached data)
 ```
+
+**Pro tip**: Sync during peak flight hours (7-9 AM or 5-7 PM IST) for maximum live aircraft count!
 
 Good luck at the hackathon! 🏆

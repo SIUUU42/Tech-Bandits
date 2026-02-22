@@ -57,7 +57,8 @@ class SQLQueryBuilder:
             params.append(source)
         
         if destination:
-            query += " AND destination = ?"
+            # For OpenSky data, most destinations are "Unknown", so make it optional
+            query += " AND (destination = ? OR destination = 'Unknown')"
             params.append(destination)
         
         if date:

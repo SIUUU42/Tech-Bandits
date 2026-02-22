@@ -52,7 +52,7 @@ if "why_expanded" not in st.session_state:
     st.session_state.why_expanded = {}
 
 if "data_source_filter" not in st.session_state:
-    st.session_state.data_source_filter = "All"
+    st.session_state.data_source_filter = "Live Only"
 
 
 @st.cache_resource
@@ -64,12 +64,20 @@ def initialize_app():
 
 
 @st.cache_data
-def load_flight_count(db_mtime: float):
+def load_flight_count(db_mtime: float, data_source_filter: str = "All"):
     """Cache flight count for stats."""
     try:
         conn = sqlite3.connect("flights.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM flights")
+        
+        # Filter by data source
+        if data_source_filter == "Live Only":
+            cursor.execute("SELECT COUNT(*) FROM flights WHERE data_source='opensky'")
+        elif data_source_filter == "Fake Only":
+            cursor.execute("SELECT COUNT(*) FROM flights WHERE data_source='fake'")
+        else:  # All
+            cursor.execute("SELECT COUNT(*) FROM flights")
+        
         count = cursor.fetchone()[0]
         conn.close()
         return count
@@ -231,7 +239,7 @@ def main():
     # Initialize
     st.session_state.agent = initialize_app()
     db_mtime = os.path.getmtime("flights.db") if os.path.exists("flights.db") else 0
-    flight_count = load_flight_count(db_mtime)
+    flight_count = load_flight_count(db_mtime, st.session_state.data_source_filter)
     
     # Header
     col1, col2 = st.columns([0.7, 0.3])
