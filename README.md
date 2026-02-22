@@ -1,8 +1,8 @@
 # ✈️ Flight Disruption Recovery Assistant
 
-**An AI-powered Streamlit chatbot for finding alternative flights during cancellations and delays.**
+**An AI-powered web application for finding alternative flights during cancellations and delays.**
 
-Built for hackathons with a focus on speed, clarity, and intelligent disruption recovery.
+Intelligent flight recovery system with real-time disruption news feeds and professional UI/UX.
 
 ![Flight Disruption Recovery Assistant](assets/basic.png)
 
@@ -538,39 +538,7 @@ python ranking_engine.py
 
 ---
 
-## 🚀 Hackathon Tips
-
-1. **Start with Disruption Mode** - Most impressive demo
-   - Enter "AI203" → See instant recovery options
-   - Shows ranking intelligence clearly
-
-2. **Show Weather/Reliability Scoring** - Judges love explainability
-   - Click "Why this flight?" buttons
-   - Demonstrates ML thinking
-
-3. **Highlight Speed** - Instant responses are impressive
-   - All cached operations show system efficiency
-   - Database queries are optimized
-
-4. **City Variety** - Show searching across multiple Indian cities
-   - 15 cities in database
-   - Demonstrates realistic scale
-
----
-
-## 📋 Code Quality
-
-- ✅ Modular architecture (7 focused Python files)
-- ✅ Clear docstrings on all functions
-- ✅ Type hints throughout
-- ✅ Error handling and logging
-- ✅ SQLite injection prevention
-- ✅ Production-ready Streamlit patterns
-- ✅ No overengineering - pure MVP focus
-
----
-
-## 🔧 Customization
+## � Customization
 
 ### Change Weight Distribution
 Edit `ranking_engine.py`:
@@ -594,44 +562,35 @@ time_preference_score()  # Modify afternoon window
 
 ---
 
-## ⚠️ Known Limitations (MVP)
+## 📄 Project Structure
 
-- Connecting flights are simulated (placeholder)
-- Single-leg flights only in actual ranking
-- Date range limited to next 7 days
-- Single LLM not integrated yet (agent is rule-based)
-- No real weather API integration
-- **Live data is snapshot-based** (not real-time streaming)
-- **OpenSky destinations are inferred** (may show "Unknown" if can't determine)
-- **Live flights have limited historical data** (weather/congestion estimates only)
-
-**These are intentionally simplified for hackathon speed!**
-
----
-
-## 📄 File Manifest
+## 📄 Project Structure
 
 ```
 Tech-Bandits/
-├── app.py                      (Streamlit UI - main entry point)
-├── agent.py                   (LangGraph-like agent workflow)
-├── ranking_engine.py          (Flight scoring and ranking)
-├── sql_generator.py           (Safe SQL query builder)
-├── database.py                (SQLite schema and seeding)
-├── utils.py                   (Utility functions)
+├── app.py                      # Streamlit UI - main entry point
+├── agent.py                    # Agent workflow for flight recovery
+├── ranking_engine.py           # Flight scoring and ranking algorithm
+├── sql_generator.py            # Safe SQL query builder
+├── database.py                 # SQLite schema and data seeding
+├── utils.py                    # Utility functions
+├── custom_css.py               # Professional UI/UX styling
+├── api_server.py               # Flask REST API for news feeds
+├── twitter_utils.py            # Twitter search URL builder
 ├── providers/
-│   └── opensky.py            (OpenSky Network API integration)
-├── requirements.txt           (Python dependencies)
-├── README.md                  (This file)
-├── goal.md                    (Project specification)
-└── flights.db                 (SQLite database - auto-generated)
+│   └── opensky.py             # OpenSky Network API integration
+├── pages/
+│   └── news.py                # Disruption news page (RSS + Twitter)
+├── requirements.txt            # Python dependencies
+├── README.md                   # Project documentation
+└── flights.db                  # SQLite database (auto-generated)
 ```
 
 ---
 
-## 👥 Team
+## 🤝 Contributing
 
-Built with ❤️ for hackathon by Team Tech-Bandits
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
@@ -641,19 +600,19 @@ Open source - use freely for learning and development.
 
 ---
 
-## 🎉 Ready to Demo!
+## 🚀 Quick Start
 
 ```bash
-# Final checklist
-1. pip install -r requirements.txt
-2. streamlit run app.py
-3. FIRST TIME: Click "Sync Live Planes" (needs internet)
-4. Try disruption mode: "AI203"
-5. Show search: "Delhi to Pune tomorrow"
-6. Click "Why this flight?" - BOOM! 🚀
-7. Turn OFF WiFi - still works! (cached data)
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Start services
+python run_all.py
+
+# 3. Access application
+# Main app: http://localhost:8501
+# News page: http://localhost:8501/News
+# API: http://127.0.0.1:5000/api/health
 ```
 
-**Pro tip**: Sync during peak flight hours (7-9 AM or 5-7 PM IST) for maximum live aircraft count!
-
-Good luck at the hackathon! 🏆
+For offline use, sync live flights first (requires internet), then the app works without connectivity using cached data.
