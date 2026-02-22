@@ -37,43 +37,57 @@ def calculate_weather_score(fog_risk: float, rain_risk: float, wind_risk: float)
     return (fog_risk + rain_risk + wind_risk) / 3
 
 
-def format_flight_display(flight: dict) -> str:
+def format_flight_display(flight: dict, lang_code: str = "en") -> str:
     """
-    Format flight data for UI display.
+    Format flight data for UI display with translation support.
     
     Args:
         flight: Flight record from database
+        lang_code: Target language code
         
     Returns:
         Formatted flight string
     """
+    from translator_utils import get_text
+    
     flight_id = flight.get("flight_id", "N/A")
     airline = flight.get("airline", "N/A")
     source = flight.get("source", "N/A")
     destination = flight.get("destination", "N/A")
     departure_time = flight.get("departure_time", "N/A")
     seats_available = flight.get("seats_available", 0)
+    
     weather_score = calculate_weather_score(
         flight.get("fog_risk", 0),
         flight.get("rain_risk", 0),
         flight.get("wind_risk", 0)
     )
-    weather_label = risk_label(weather_score)
-    delay_label = risk_label(flight.get("delay_probability", 0))
+    
+    weather_label = get_text(risk_label(weather_score), lang_code)
+    delay_label = get_text(risk_label(flight.get("delay_probability", 0)), lang_code)
     price = flight.get("price", 0)
     mobility_friendly = flight.get("mobility_friendly", "YES")
     
-    seats_category = "Plenty" if seats_available > 30 else "Limited" if seats_available > 10 else "Scarce"
-    mobility_badge = "♿ Accessible" if mobility_friendly == "YES" else ""
+    seats_cat_raw = "Plenty" if seats_available > 30 else "Limited" if seats_available > 10 else "Scarce"
+    seats_category = get_text(seats_cat_raw, lang_code)
+    
+    mobility_tag = get_text("Accessible", lang_code)
+    mobility_badge = f"♿ {mobility_tag}" if mobility_friendly == "YES" else ""
     
     accessibility_line = f"- {mobility_badge}" if mobility_badge else ""
     
+    # Translate labels
+    seats_label = get_text("Seats", lang_code)
+    weather_label_tag = get_text("Weather Risk", lang_code)
+    delay_label_tag = get_text("Delay Risk", lang_code)
+    price_label = get_text("Price", lang_code)
+    
     return f"""
 **✈️  {flight_id}** ({airline}) — {source} → {destination} — {departure_time}
-- **Seats:** {seats_available} ({seats_category})
-- **Weather Risk:** {weather_label}
-- **Delay Risk:** {delay_label}
-- **Price:** ₹{price}
+- **{seats_label}:** {seats_available} ({seats_category})
+- **{weather_label_tag}:** {weather_label}
+- **{delay_label_tag}:** {delay_label}
+- **{price_label}:** ₹{price}
 {accessibility_line}
 """
 
