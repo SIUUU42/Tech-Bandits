@@ -170,10 +170,12 @@ class RankingEngine:
             factors.append("good seat availability")
         
         time_score = self.calculate_time_score(flight.get("departure_time", "12:00"))
-        if time_score > 0.7:
-            factors.append("optimal afternoon timing")
+        if time_score > 0.8:
+            factors.append("optimal afternoon timing (12-17)")
+        elif time_score > 0.6:
+            factors.append("good afternoon/morning timing")
         elif time_score > 0.4:
-            factors.append("good departure time")
+            factors.append("accessible departure time")
         
         weather_score = self.calculate_weather_score_adj(
             flight.get("fog_risk", 0),

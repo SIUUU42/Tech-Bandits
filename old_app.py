@@ -14,8 +14,6 @@ import logging
 from database import setup_database, get_all_flights, sync_live_planes_to_db
 from agent import FlightDisruptionAgent
 from utils import format_flight_display, risk_label, calculate_weather_score
-from translator_utils import get_text, LANGUAGES, translate_text
-from custom_css import inject_css
 
 # Compatibility for different Streamlit versions
 def rerun():
@@ -32,9 +30,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Inject custom CSS for professional styling
-inject_css()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -57,10 +52,7 @@ if "why_expanded" not in st.session_state:
     st.session_state.why_expanded = {}
 
 if "data_source_filter" not in st.session_state:
-    st.session_state.data_source_filter = "All"
-
-if "language" not in st.session_state:
-    st.session_state.language = "English"
+    st.session_state.data_source_filter = "Live Only"
 
 
 @st.cache_resource
@@ -124,14 +116,13 @@ def render_flight_with_explanation(flight: Dict, explanation: str, flight_id: st
     
     with st.container():
         # Flight info
-        lang_code = LANGUAGES.get(st.session_state.language, "en")
-        st.markdown(format_flight_display(flight, lang_code=lang_code))
+        st.markdown(format_flight_display(flight))
         
         # Why this flight button with unique key
         col1, col2 = st.columns([0.3, 0.7])
         with col1:
             if st.button(
-                get_text("💡 Why this flight?", lang_code),
+                "💡 Why this flight?",
                 key=f"why_{unique_id}",
                 use_container_width=True
             ):
@@ -140,71 +131,60 @@ def render_flight_with_explanation(flight: Dict, explanation: str, flight_id: st
         # Show explanation if expanded
         if st.session_state.why_expanded.get(unique_id, False):
             with col2:
-                # Translate explanation if needed
-                lang_code = LANGUAGES.get(st.session_state.language, "en")
-                translated_explanation = get_text(explanation, lang_code)
-                st.info(translated_explanation)
+                st.info(explanation)
 
 
 def render_disruption_mode():
     """Render the disruption mode input section."""
-    lang_code = LANGUAGES.get(st.session_state.language, "en")
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"### 🚨 {get_text('DISRUPTION MODE', lang_code)}")
-    st.sidebar.markdown(f"*{get_text('Direct flight ID entry for quick recovery', lang_code)}*")
+    st.sidebar.markdown("### 🚨 DISRUPTION MODE")
+    st.sidebar.markdown("*Direct flight ID entry for quick recovery*")
     
     disruption_flight_id = st.sidebar.text_input(
-        get_text("Enter flight ID", lang_code),
+        "Enter flight ID (e.g., AI203)",
         placeholder="AI203",
         key="disruption_input"
     )
     
-    if st.sidebar.button(get_text("Find Alternatives", lang_code), use_container_width=True):
+    if st.sidebar.button("🔍 Find Alternatives", use_container_width=True):
         if disruption_flight_id.strip():
             st.session_state.disruption_query = disruption_flight_id.strip()
             rerun()
         else:
-            st.sidebar.error(get_text("Please enter a flight ID", lang_code))
+            st.sidebar.error("Please enter a flight ID")
 
 
 def render_live_data_section():
     """Render the live data sync and filtering section."""
-    lang_code = LANGUAGES.get(st.session_state.language, "en")
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"### 🛰️ {get_text('LIVE DATA', lang_code)}")
-    st.sidebar.markdown(f"*{get_text('Real-time aircraft from OpenSky Network', lang_code)}*")
+    st.sidebar.markdown("### 🛰️ LIVE DATA")
+    st.sidebar.markdown("*Real-time aircraft from OpenSky Network*")
     
-    if st.sidebar.button(get_text("Sync Live Planes (OpenSky)", lang_code), use_container_width=True, key="sync_opensky"):
-        with st.spinner(get_text("Fetching live aircraft from OpenSky Network...", lang_code)):
+    if st.sidebar.button("Sync Live Planes (OpenSky)", use_container_width=True, key="sync_opensky"):
+        with st.spinner("Fetching live aircraft from OpenSky Network..."):
             try:
                 stats = sync_live_planes_to_db()
                 
                 if stats.get("errors") and stats["errors"] > 0:
                     error_msg = stats.get("error_msg", "Unknown error")
-                    st.sidebar.error(f"⚠️ {get_text('Sync had errors', lang_code)}: {error_msg}")
+                    st.sidebar.error(f"⚠️ Sync had errors: {error_msg}")
                 else:
                     st.sidebar.success(
-                        f"✅ {get_text('Synced', lang_code)} {stats.get('live_planes', 0)} {get_text('aircraft', lang_code)} → "
-                        f"{stats.get('materialized_flights', 0)} {get_text('flights', lang_code)}"
+                        f"✅ Synced {stats.get('live_planes', 0)} aircraft → "
+                        f"{stats.get('materialized_flights', 0)} flights"
                     )
                     # Force rerun to refresh flight data
                     rerun()
             except Exception as e:
-                st.sidebar.error(f"❌ {get_text('Sync failed', lang_code)}: {str(e)}")
+                st.sidebar.error(f"❌ Sync failed: {str(e)}")
     
     # Data source filter
-    options = ["All", "Live Only", "Fake Only"]
-    translated_options = [get_text(opt, lang_code) for opt in options]
-    
-    selected_translated = st.sidebar.selectbox(
-        get_text("Data Source Filter", lang_code),
-        translated_options,
-        key="data_source_selectbox_ui",
-        index=options.index(st.session_state.data_source_filter)
+    st.session_state.data_source_filter = st.sidebar.selectbox(
+        "Data Source Filter",
+        ["All", "Live Only", "Fake Only"],
+        key="data_source_selectbox",
+        index=["All", "Live Only", "Fake Only"].index(st.session_state.data_source_filter)
     )
-    
-    # Map back to original option
-    st.session_state.data_source_filter = options[translated_options.index(selected_translated)]
 
 
 def process_user_input(user_input: str):
@@ -237,12 +217,9 @@ def process_user_input(user_input: str):
             st.session_state.explanations = explanations
         
         # Add assistant response to chat history
-        lang_code = LANGUAGES.get(st.session_state.language, "en")
-        translated_response = get_text(response, lang_code)
-        
         st.session_state.messages.append({
             "role": "assistant",
-            "content": translated_response,
+            "content": response,
             "flights": ranked_flights
         })
     
@@ -264,42 +241,34 @@ def main():
     db_mtime = os.path.getmtime("flights.db") if os.path.exists("flights.db") else 0
     flight_count = load_flight_count(db_mtime, st.session_state.data_source_filter)
     
-    lang_code = LANGUAGES.get(st.session_state.language, "en")
-
     # Header
     col1, col2 = st.columns([0.7, 0.3])
     with col1:
-        st.title(f"✈️ {get_text('Flight Disruption Recovery Assistant', lang_code)}")
-        st.markdown(f"*{get_text('Your AI-powered solution for flight cancellations and delays', lang_code)}*")
+        st.title("✈️ Flight Disruption Recovery Assistant")
+        st.markdown("*Your AI-powered solution for flight cancellations and delays*")
     
     with col2:
-        st.metric(get_text("Flights Available", lang_code), flight_count)
+        st.metric("Flights Available", flight_count)
     
     # Sidebar info
     with st.sidebar:
-        st.session_state.language = st.selectbox(
-            "🌐 Select Language",
-            options=list(LANGUAGES.keys()),
-            index=list(LANGUAGES.keys()).index(st.session_state.language)
-        )
-        
-        st.markdown(f"### 📌 {get_text('How to use', lang_code)}")
-        st.markdown(f"""
-        1. **{get_text('Chat Mode', lang_code)}:** {get_text('Ask natural questions', lang_code)}
+        st.markdown("### 📌 How to use")
+        st.markdown("""
+        1. **Chat Mode:** Ask natural questions
            - "Show flights from Delhi to Pune"
            - "Flights tomorrow afternoon"
         
-        2. **{get_text('Recovery Mode', lang_code)}:** {get_text('Enter cancelled flight ID', lang_code)}
-           - {get_text('Use disruption input below', lang_code)}
-           - {get_text('Get best alternatives instantly', lang_code)}
+        2. **Recovery Mode:** Enter cancelled flight ID
+           - Use disruption input below
+           - Get best alternatives instantly
         
-        3. **{get_text('Why this flight?', lang_code)}**
-           - {get_text('Click button on any flight', lang_code)}
-           - {get_text('See scoring breakdown', lang_code)}
+        3. **Why this flight?**
+           - Click button on any flight
+           - See scoring breakdown
         """)
         
         st.markdown("---")
-        st.markdown(f"### 🎯 {get_text('Example Queries', lang_code)}")
+        st.markdown("### 🎯 Example Queries")
         st.markdown("""
         - "Flights from Mumbai to Bangalore tomorrow"
         - "Show afternoon flights Delhi to Hyderabad"
@@ -359,7 +328,7 @@ def main():
     else:
         # Normal chat input
         user_input = st.chat_input(
-            get_text("Ask about flights...", lang_code),
+            "Ask about flights... (e.g., 'Show flights from Delhi to Pune tomorrow afternoon')",
             key="chat_input"
         )
         

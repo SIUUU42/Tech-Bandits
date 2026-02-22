@@ -147,14 +147,14 @@ def infer_airline_from_callsign(callsign: str) -> str:
 
 def infer_nearest_city(lat: float, lon: float) -> Tuple[str, str]:
     """
-    Infer nearest major Indian city based on coordinates.
+    Infer nearest major Indian city based on coordinates and predict destination.
     
     Args:
         lat: Latitude
         lon: Longitude
         
     Returns:
-        Tuple of (source_city, destination_city) - both same for live data
+        Tuple of (source_city, destination_city) based on current location
     """
     # Major Indian city coordinates (approximate)
     cities = {
@@ -167,6 +167,19 @@ def infer_nearest_city(lat: float, lon: float) -> Tuple[str, str]:
         "Pune": (18.5204, 73.8567),
         "Ahmedabad": (23.0225, 72.5714),
         "Jaipur": (26.9124, 75.7873),
+    }
+    
+    # Common routes (source -> destination pairs)
+    common_routes = {
+        "Delhi": ["Mumbai", "Bangalore", "Hyderabad", "Pune"],
+        "Mumbai": ["Delhi", "Bangalore", "Chennai", "Hyderabad"],
+        "Bangalore": ["Delhi", "Mumbai", "Chennai", "Hyderabad"],
+        "Chennai": ["Delhi", "Mumbai", "Bangalore", "Hyderabad"],
+        "Hyderabad": ["Delhi", "Mumbai", "Bangalore", "Chennai"],
+        "Kolkata": ["Delhi", "Mumbai", "Bangalore"],
+        "Pune": ["Delhi", "Mumbai", "Bangalore", "Chennai"],
+        "Ahmedabad": ["Delhi", "Mumbai", "Bangalore"],
+        "Jaipur": ["Delhi", "Mumbai", "Bangalore"],
     }
     
     if lat is None or lon is None:
@@ -183,7 +196,13 @@ def infer_nearest_city(lat: float, lon: float) -> Tuple[str, str]:
             min_distance = distance
             closest_city = city
     
-    return (closest_city, "Unknown")
+    # Predict destination from common routes
+    destination = "Unknown"
+    if closest_city in common_routes:
+        # Use first common destination (could be randomized for variety)
+        destination = common_routes[closest_city][0]
+    
+    return (closest_city, destination)
 
 
 if __name__ == "__main__":

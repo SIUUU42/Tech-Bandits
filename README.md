@@ -36,8 +36,168 @@ Python 3.10+
 Streamlit 1.40+
 SQLite3
 LangGraph (agent workflow)
+Flask (RSS API server)
 Pandas
+feedparser (RSS parsing)
 ```
+
+---
+
+## 📰 Disruption News (RSS + Twitter/X Integration)
+
+The app includes a **dual-source real-time news feature** that fetches disruption updates from both Google News RSS and Twitter/X with intelligent query building.
+
+### 🎨 UI/UX Enhancements
+
+**Professional Design**
+- **Modern gradient styling** - Teal/turquoise color scheme with professional gradients
+- **Enhanced cards** - Hover effects, smooth transitions, and better spacing
+- **Responsive layout** - Mobile-friendly design that adapts to all screen sizes
+- **Better typography** - Improved readability with proper font sizing and weights
+- **Custom scrollbars** - Styled scrollbars matching the design system
+- **Smooth interactions** - Button animations and visual feedback
+- **Dark sidebar** - Professional sidebar with white text and gradient
+- **Alert improvements** - Better styled success/error/warning messages
+
+### Features
+- **📱 Dual-Source News** - RSS feeds (Google News) + Twitter/X searches side-by-side
+- **⚡ 5-minute Caching** - Reduces API rate limiting (RSS only)
+- **🔄 Smart Detection** - Auto-detects flight numbers, airlines, and disruption keywords
+- **🎯 Advanced Search Operators** - Twitter searches use: OR, from:, lang:, quotes
+- **⏱️ Real-time Updates** - Live Twitter searches and cached RSS results
+- **🔗 Direct Links** - Click through to articles or open searches on Twitter/X
+- **🌍 Global Coverage** - Search any flight number or travel keyword
+- **📊 Beautiful Results** - Enhanced display with source badges and metadata
+
+### Smart Query Detection
+
+The system automatically detects:
+- **🚨 Disruption Keywords**: "cancelled", "delayed", "diverted", "stranded"
+- **✈️ Airline Handles**: Infers Twitter handles from flight prefixes (AA→@AmericanAir, AI→@SpiceJet)
+- **📢 News Requests**: Keywords like "news", "report", "update", "alert"
+
+### How to Use Disruption News
+
+1. **Start the API server** (in separate terminal):
+   ```bash
+   python api_server.py
+   ```
+   Runs Flask on `http://127.0.0.1:5000`
+
+2. **Run the Streamlit app**:
+   ```bash
+   streamlit run app.py
+   ```
+
+3. **Navigate to 📰 Disruption News** from sidebar
+
+4. **Search**:
+   - **Flight numbers**: `AA100`, `AI203`, `BA747`
+   - **Keywords**: `flight delays`, `airport closures`, `weather disruption`
+
+5. **View Results**:
+   - **RSS Tab** (📰): Google News articles with source and publish time
+   - **Twitter Tab** (𝕏): Live searches on Twitter/X with advanced operators
+
+### Example Searches
+
+**Flight Disruption**
+```
+Query: AA100
+Auto-detects:
+  - Airline: American Airlines (@AmericanAir)
+  - Search terms: delay OR diverted OR cancelled
+  - Twitter search: AA100 (delay OR diverted OR cancelled) from:AmericanAir
+```
+
+**Keyword Search**
+```
+Query: Delhi airport closure
+Auto-detects:
+  - Disruption type: Airport issue
+  - Twitter search: "Delhi airport closure" (news OR disruption)
+```
+
+### Twitter Search Operators
+
+The system uses these advanced operators for better results:
+
+| Operator | Example | Meaning |
+|----------|---------|---------|
+| `OR` | delay OR diverted | Any condition |
+| `from:` | from:AmericanAir | From specific account |
+| `lang:` | lang:en | Language filter |
+| `"..."` | "flight delay" | Exact phrase |
+| `-` | -spam | Exclude terms |
+| `&f=live` | &f=live | Live results only |
+
+### API Endpoints
+
+**RSS Feed API:**
+```
+GET /api/news/rss?q=<query>
+```
+
+**Response:**
+```json
+{
+  "query": "AA100",
+  "items": [
+    {
+      "title": "Flight AA100 faces 2-hour delay due to weather",
+      "link": "https://news.google.com/...",
+      "publishedAt": "2026-02-22T10:30:00",
+      "source": "Aviation Today",
+      "snippet": "Heavy snow at Denver forced delays..."
+    }
+  ],
+  "count": 12,
+  "cached": false
+}
+```
+
+**Health Check:**
+```
+GET /api/health
+```
+
+### Caching Strategy
+
+- **In-memory cache**: 5-minute TTL per query
+- **Thread-safe**: Locks for concurrent requests
+- **Automatic cleanup**: Expired entries removed on access
+- **Benefits**: Reduces Google News rate limits and improves response
+
+### Running Both Services
+
+Use the convenience script to start both services:
+
+```bash
+python run_all.py
+```
+
+This starts:
+1. Flask API on `http://127.0.0.1:5000`
+2. Streamlit on `http://localhost:8501`
+
+### Important Notes
+
+**Best-Effort Service**
+- RSS feed availability may change
+- Google News can block requests during high traffic
+- Twitter searches are live on Twitter/X servers
+- Graceful fallback to cached results when unavailable
+
+**Rate Limiting**
+
+- Google News has rate limits (~30-60 requests/minute)
+- 5-minute caching significantly reduces load
+- Reuse search queries to hit cache
+
+**Privacy**
+- No user data is logged
+- RSS fetches happen server-side
+- All processing is local
 
 ---
 
@@ -65,6 +225,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+This installs:
+- `streamlit` - UI framework
+- `feedparser` - RSS parsing
+- `flask` - API server for news
+- `requests` - HTTP client
+- `deep-translator` - Translation support
+
 ### 4. Initialize Database (Optional)
 ```bash
 python database.py
@@ -75,11 +242,33 @@ This creates `flights.db` with 150 realistic Indian flights. Run automatically o
 
 ## 🚀 Running the App
 
+### Quick Start (Both Services)
+
+```bash
+python run_all.py
+```
+
+This starts both the Flask API server and Streamlit app.
+
+### Manual Start (Separate Terminals)
+
+**Terminal 1 - Flask API Server:**
+```bash
+python api_server.py
+```
+Runs on `http://127.0.0.1:5000`
+
+**Terminal 2 - Streamlit App:**
 ```bash
 streamlit run app.py
 ```
+Opens on `http://localhost:8501`
 
-The app will open in your browser at `http://localhost:8501`
+### Access the App
+
+- **Main chat interface**: http://localhost:8501
+- **Disruption News**: http://localhost:8501/News
+- **API health check**: http://127.0.0.1:5000/api/health
 
 ---
 
